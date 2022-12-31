@@ -9,9 +9,13 @@ type Storage interface {
 	ListGames() ([]string, error)
 	SaveGame(*game.Game) error
 	GetGame(string) (*game.Game, error)
+	CleanUpGames() error
+	GetQuestions() ([]string, error)
 	Lock(string)
 	Unlock(string)
 }
+
+const questionKey = "questions.json"
 
 func SubmitPlay(storage Storage, gp game.GamePlay) (*game.Game, error) {
 	//storage.Lock(gp.GameName)

@@ -2,8 +2,9 @@ package game
 
 import (
 	"errors"
-	"log"
+	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/stinkyfingers/hilarity/user"
 )
@@ -12,8 +13,10 @@ type Game struct {
 	ID           int                  `json:"id"`
 	Name         string               `json:"name"`
 	Users        map[string]user.User `json:"users"` // username:user
-	PastRounds   []Round              `json:"pastRounds"`
-	CurrentRound Round                `json:"currentRound"`
+	PastRounds   []*Round             `json:"pastRounds"`
+	CurrentRound *Round               `json:"currentRound"`
+	Questions    []string             `json:"questions"`
+	TotalRounds  int                  `json:"totalRounds"`
 	mutex        sync.RWMutex         `json:"-"`
 }
 
@@ -28,7 +31,7 @@ type Play struct {
 }
 
 type Guess struct {
-	Responses map[string]string // guessed user:actual user
+	Responses map[string]string `json:"responses"` // guessed user:actual user
 }
 
 type GamePlay struct {
@@ -40,35 +43,63 @@ type GamePlay struct {
 
 var ErrNilPlay = errors.New("play is empty")
 var ErrNilGuess = errors.New("guess is empty")
+var ErrTooManyRounds = errors.New("games are limited to 10 rounds")
+var ErrNoQuestions = errors.New("no unique questions left")
 
-func getQuestion() (string, error) { // TODO
-	return "top 3 ice cream flavors", nil
-}
+const DefaultTotalRounds int = 6
+const MaxTotalRounds int = 10
 
-func NewGame(name string) (*Game, error) {
-	round, err := NewRound()
+func NewGame(name string, totalRounds int, allQuestions []string) (*Game, error) {
+	if totalRounds > MaxTotalRounds {
+		return nil, ErrTooManyRounds
+	}
+
+	questions, err := getQuestions(allQuestions, totalRounds)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Game{
-		Name:         name,
-		CurrentRound: *round,
-		Users:        make(map[string]user.User),
-		mutex:        sync.RWMutex{},
-	}, nil
+	g := &Game{
+		Name:        name,
+		Users:       make(map[string]user.User),
+		TotalRounds: totalRounds,
+		Questions:   questions,
+		mutex:       sync.RWMutex{},
+	}
+	g.CurrentRound = NewRound(g)
+	return g, nil
 }
 
-func NewRound() (*Round, error) {
-	question, err := getQuestion()
-	if err != nil {
-		return nil, err
-	}
+func NewRound(g *Game) *Round {
 	return &Round{
-		Question: question,
+		Question: g.Questions[len(g.PastRounds)],
 		Plays:    make(map[string]Play),
 		Guesses:  make(map[string]Guess),
-	}, nil
+	}
+}
+
+func getQuestions(questions []string, num int) ([]string, error) { // TODO - move to S3
+	i := 0
+	var output []string
+	usedIndexes := make(map[int]struct{})
+	for {
+		select {
+		case <-time.After(time.Second):
+			return nil, ErrNoQuestions
+		default:
+			if i >= num {
+				return output, nil
+			}
+			index := rand.Intn(len(questions))
+			if _, ok := usedIndexes[index]; ok {
+				continue
+			}
+			usedIndexes[index] = struct{}{}
+			output = append(output, questions[index])
+			i++
+		}
+	}
+
 }
 
 func (g *Game) Join(u user.User) {
@@ -99,36 +130,46 @@ func (g *Game) Leave(u user.User) {
 */
 
 func (gp *GamePlay) MakePlay(g *Game) error {
-	if len(g.CurrentRound.Plays) < len(g.Users) {
+	if gp.Play != nil {
 		return gp.PlayRound(g)
 	}
+	if gp.Guess != nil {
+		if err := gp.GuessRound(g); err != nil {
+			return err
+		}
+	}
+
 	if len(g.CurrentRound.Guesses) < len(g.Users) {
-		return gp.GuessRound(g)
+		return nil
 	}
+
 	// next round & play
-	round, err := NewRound()
-	if err != nil {
-		return err
-	}
 	g.PastRounds = append(g.PastRounds, g.CurrentRound)
-	g.CurrentRound = *round
-	return gp.PlayRound(g)
+	if len(g.PastRounds) == g.TotalRounds {
+		g.CurrentRound = nil
+		return nil
+	}
+	round := NewRound(g)
+	g.CurrentRound = round
+	return nil
 }
 
 func (gp *GamePlay) PlayRound(g *Game) error {
-	log.Println("PLAY")
 	if gp.Play == nil {
 		return ErrNilPlay
 	}
+	g.mutex.Lock()
 	g.CurrentRound.Plays[gp.User.Name] = *gp.Play
+	g.mutex.Unlock()
 	return nil
 }
 
 func (gp *GamePlay) GuessRound(g *Game) error {
-	log.Println("GUESS")
 	if gp.Guess == nil {
 		return ErrNilGuess
 	}
+	g.mutex.Lock()
 	g.CurrentRound.Guesses[gp.User.Name] = *gp.Guess
+	g.mutex.Unlock()
 	return nil
 }

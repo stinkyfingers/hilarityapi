@@ -2,9 +2,12 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/stinkyfingers/hilarity/game"
 )
@@ -36,7 +39,7 @@ func NewFile(path string) (*File, error) {
 
 // not threadsafe - call lock/unlock
 func (f *File) read(name string) (*game.Game, error) {
-	file, err := os.Open(filepath.Join(f.Path, name))
+	file, err := os.Open(filepath.Join(f.Path, fmt.Sprintf("%s.json", name)))
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +54,7 @@ func (f *File) read(name string) (*game.Game, error) {
 
 // not threadsafe - call lock/unlock
 func (f *File) write(g *game.Game) error {
-	path := filepath.Join(f.Path, g.Name)
+	path := filepath.Join(f.Path, fmt.Sprintf("%s.json", g.Name))
 	var err error
 	file, err := os.Create(path)
 	if err != nil {
@@ -67,8 +70,12 @@ func (f *File) NameExists(name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, file := range dirs {
-		if filepath.Base(file.Name()) == name {
+	for _, dir := range dirs {
+		info, err := dir.Info()
+		if err != nil {
+			return true, err
+		}
+		if filepath.Base(info.Name()) == fmt.Sprintf("%s.json", name) {
 			return true, nil
 		}
 	}
@@ -86,7 +93,10 @@ func (f *File) ListGames() ([]string, error) {
 	}
 	var games []string
 	for _, info := range infos {
-		games = append(games, info.Name())
+		if info.Name() == questionKey {
+			continue
+		}
+		games = append(games, strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())))
 	}
 	return games, nil
 }
@@ -102,6 +112,30 @@ func (f *File) SaveGame(game *game.Game) error {
 	return f.write(game)
 }
 
+func (f *File) CleanUpGames() error {
+	infos, err := os.ReadDir(f.Path)
+	if err != nil {
+		return err
+	}
+
+	for _, info := range infos {
+		if info.Name() == questionKey {
+			continue
+		}
+		fileInfo, err := info.Info()
+		if err != nil {
+			return err
+		}
+		if fileInfo.ModTime().Before(time.Now().Add(-24 * time.Hour)) {
+			err = os.Remove(fileInfo.Name())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (f *File) Lock(name string) {
 	if _, ok := f.mutexes[name]; ok {
 		f.mutexes[name].Lock()
@@ -112,4 +146,15 @@ func (f *File) Unlock(name string) {
 	if _, ok := f.mutexes[name]; ok {
 		f.mutexes[name].Unlock()
 	}
+}
+
+func (f *File) GetQuestions() ([]string, error) {
+	file, err := os.Open(filepath.Join(f.Path, questionKey))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	var output []string
+	err = json.NewDecoder(file).Decode(&output)
+	return output, err
 }

@@ -61,10 +61,31 @@ func (i *InMemory) GetGame(name string) (*game.Game, error) {
 	return &g, nil
 }
 
+func (i *InMemory) CleanUpGames() error {
+	return nil
+}
+
 func (c *InMemory) Lock(name string) {
 	c.mutex.Lock()
 }
 
 func (c *InMemory) Unlock(name string) {
 	c.mutex.Unlock()
+}
+
+func (c *InMemory) GetQuestions() ([]string, error) {
+	questions := []string{
+		"ice cream flavors",
+		"pizza toppings",
+		"action movies",
+		"comedy movies",
+		"TV shows",
+		"taco toppings",
+		"actors",
+		"comedians",
+		"pet types",
+		"bad smells",
+		"annoying noises",
+	}
+	return questions, nil
 }
