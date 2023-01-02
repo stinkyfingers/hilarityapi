@@ -62,6 +62,7 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/game/leave", s.LeaveGame)
 	mux.HandleFunc("/games/list", s.ListGames)
 	mux.HandleFunc("/game/details", s.GetGame)
+	mux.HandleFunc("/status", s.Status)
 	return http.ListenAndServe(s.Port, cors.Default().Handler(mux))
 }
 

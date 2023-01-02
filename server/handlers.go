@@ -116,6 +116,16 @@ func (s *Server) GetGame(w http.ResponseWriter, r *http.Request) {
 	s.JSON(w, g, err)
 }
 
+// GET
+func (s *Server) Status(w http.ResponseWriter, r *http.Request) {
+	status := struct {
+		Message string `json:"message"`
+	}{
+		Message: "OK",
+	}
+	s.JSON(w, status, nil)
+}
+
 // WS
 func (s *Server) PlayGame(ws *websocket.Conn) {
 	gameName := ws.Request().URL.Query().Get("game")
