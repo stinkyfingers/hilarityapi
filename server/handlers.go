@@ -73,6 +73,11 @@ func (s *Server) JoinGame(w http.ResponseWriter, r *http.Request) {
 	}
 	g.Join(u)
 	err = s.Storage.SaveGame(g)
+	if err != nil {
+		s.JSONErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	err = s.Disseminator.Disseminate(g.Name, g)
 	s.JSON(w, g, err)
 }
 
@@ -96,6 +101,11 @@ func (s *Server) LeaveGame(w http.ResponseWriter, r *http.Request) {
 	}
 	g.Leave(u)
 	err = s.Storage.SaveGame(g)
+	if err != nil {
+		s.JSONErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	err = s.Disseminator.Disseminate(g.Name, g)
 	s.JSON(w, g, err)
 }
 

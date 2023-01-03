@@ -127,7 +127,7 @@ func (f *File) CleanUpGames() error {
 			return err
 		}
 		if fileInfo.ModTime().Before(time.Now().Add(-24 * time.Hour)) {
-			err = os.Remove(fileInfo.Name())
+			err = os.Remove(filepath.Join(f.Path, fileInfo.Name()))
 			if err != nil {
 				return err
 			}
